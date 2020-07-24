@@ -1,5 +1,7 @@
+import torch
 from torch import nn
 import torch.nn.functional as F
+
 
 class UNet(nn.Module):
 
@@ -31,7 +33,7 @@ class UNet(nn.Module):
         self.conv9_input =      nn.Conv2d(128, 64, 3, padding=1)
         self.conv9 =            nn.Conv2d(64, 64, 3, padding=1)
         self.conv9_output =     nn.Conv2d(64, 2, 1)
-        
+
         if dice:
             self.final =        F.softmax
         else:
@@ -84,6 +86,6 @@ class UNet(nn.Module):
         layer9 = torch.cat((layer1, layer9), 1)
         layer9 = F.relu(self.conv9_input(layer9))
         layer9 = F.relu(self.conv9(layer9))
-        layer9 = self.final(self.conv9_output(layer9))
+        layer9 = self.final(self.conv9_output(layer9), dim=1)
 
         return layer9
