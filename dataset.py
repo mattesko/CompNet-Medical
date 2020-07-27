@@ -5,6 +5,7 @@ from PIL import Image
 import pdb
 import numpy as np
 from sklearn.preprocessing import normalize
+import random
 
 import torch
 import torch.nn.functional as F
@@ -75,9 +76,15 @@ class Chaos2DSegmentationDataset(Dataset):
             input_image, gt_image = self.cached_segmentation_pairs[key]
         else:
             input_image_fp, gt_image_fp = self.image_pair_filepaths[key]
-            input_image, gt_image = self._load_image_pair(input_image_fp, gt_image_fp)
+            input_image, gt_image = self._load_image_pair(input_image_fp,
+                                                          gt_image_fp)
 
+        # Need to use the same seed for the random package, so that any
+        # random properties for both input and target transforms are the same
+        seed = np.random.randint(2147483647)
+        random.seed(seed)
         input_image = self._transform(input_image, self.input_transform)
+        random.seed(seed)
         gt_image = self._transform(gt_image, self.gt_transform)
 
         return input_image, gt_image
@@ -92,15 +99,20 @@ class NormalizeInstance(object):
 
     input_data: The array or tensor to normalize
     """
-    
+    def __init__(self, mean=None):
+        self.mean = mean
+
     def __call__(self, input_data):
+        if self.mean:
+            return input_data * self.mean/input_data.max()
+        
         if type(input_data) == torch.Tensor:
             mean, std = input_data.mean(), input_data.std()
             input_data = F.normalize(input_data, [mean], [std])
         else:
             input_data = normalize(input_data)
         return input_data
-    
+
 
 def get_image_pair_filepaths(root_chaos_directory, modality='CT', is_train=True):
     """Returns a list of (image filepath, mask filepath) for every CHAOS dataset slice
