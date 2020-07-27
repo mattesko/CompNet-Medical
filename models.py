@@ -86,6 +86,7 @@ class UNet(nn.Module):
         layer9 = torch.cat((layer1, layer9), 1)
         layer9 = F.relu(self.conv9_input(layer9))
         layer9 = F.relu(self.conv9(layer9))
-        layer9 = self.final(self.conv9_output(layer9), dim=1)
+#         layer9 = self.final(self.conv9_output(layer9), dim=1)
+        layer9 = self.conv9_output(layer9)
 
         return layer9
