@@ -20,16 +20,23 @@ class Chaos2DSegmentationDataset(Dataset):
     Supports DICOM (.dcm) and PIL.Image supported images (.png, .jpg)
     """
 
-    def __init__(self, image_pair_filepaths, input_image_handler=pydicom.dcmread, gt_image_handler=Image.open,
-                 is_train=True, input_transform=None, gt_transform=None, cache=False, device=None):
+    def __init__(self, image_pair_filepaths, input_image_handler=pydicom.dcmread,
+                 gt_image_handler=Image.open, input_transform=None,
+                 gt_transform=None, cache=False, cache_input_transform=None,
+                 cache_gt_transform=None, device=None, input_dtype=torch.double,
+                 target_dtype=torch.long):
+
         self.image_pair_filepaths = image_pair_filepaths
-        self.is_train = is_train
         self.input_image_handler = input_image_handler
         self.gt_image_handler = gt_image_handler
         self.input_transform = input_transform
         self.gt_transform = gt_transform
         self.cache = cache
+        self.cache_input_transform = cache_input_transform
+        self.cache_gt_transform = cache_gt_transform
         self.device = device
+        self.input_dtype = input_dtype
+        self.target_dtype = target_dtype
         self.cached_segmentation_pairs = []
 
         if cache:
@@ -41,16 +48,19 @@ class Chaos2DSegmentationDataset(Dataset):
         for input_image_fp, gt_image_fp in self.image_pair_filepaths:
 
             input_image, gt_image = self._load_image_pair(input_image_fp, gt_image_fp)
+            input_image = self._transform(input_image, self.cache_input_transform)
+            gt_image = self._transform(gt_image, self.cache_gt_transform)
+
+#             if self.device:
+#                 input_image = input_image.to(self.device, self.input_dtype)
+#                 gt_image = gt_image.to(self.device, self.target_dtype)
+
             self.cached_segmentation_pairs.append((input_image, gt_image))
 
     def _load_image_pair(self, input_image_fp, gt_image_fp):
-        """Load the input image and ground truth images to the device memory"""
+        """Load the input image and ground truth images"""
         input_image = self._get_array(self.input_image_handler(input_image_fp))
         gt_image = self._get_array(self.gt_image_handler(gt_image_fp))
-
-#         if self.device:
-#             input_image.to(self.device)
-#             gt_image.to(self.device)
 
         return input_image, gt_image
 
@@ -74,6 +84,7 @@ class Chaos2DSegmentationDataset(Dataset):
     def __getitem__(self, key):
         if self.cache:
             input_image, gt_image = self.cached_segmentation_pairs[key]
+#             return input_image, gt_image
         else:
             input_image_fp, gt_image_fp = self.image_pair_filepaths[key]
             input_image, gt_image = self._load_image_pair(input_image_fp,
@@ -87,6 +98,10 @@ class Chaos2DSegmentationDataset(Dataset):
         random.seed(seed)
         gt_image = self._transform(gt_image, self.gt_transform)
 
+        if self.device:
+            input_image = input_image.to(self.device, self.input_dtype)
+            gt_image = gt_image.to(self.device, self.target_dtype)
+
         return input_image, gt_image
 
     def __len__(self):
@@ -99,13 +114,14 @@ class NormalizeInstance(object):
 
     input_data: The array or tensor to normalize
     """
+    
     def __init__(self, mean=None):
         self.mean = mean
 
     def __call__(self, input_data):
         if self.mean:
             return input_data * self.mean/input_data.max()
-        
+
         if type(input_data) == torch.Tensor:
             mean, std = input_data.mean(), input_data.std()
             input_data = F.normalize(input_data, [mean], [std])
