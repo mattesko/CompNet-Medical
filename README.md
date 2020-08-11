@@ -1,3 +1,21 @@
+# CompNet Medical
+
+## Installation
+This project uses __Python 3.6__ and is tested on CUDA 10.2.
+
+It is highly recommended to create and use a virtual environment to install dependencies and run any code:
+```
+virtualenv ${HOME}/.virtualenv/CompNet
+source ${HOME}/.virtualenv/CompNet/bin/activate
+```
+
+Clone the repositort and install package dependencies:
+```
+git clone https://github.com/mattesko/CompNet-Medical
+cd CompNet-Medical
+pip install -r requirements.txt
+pip install -e .
+```
 
 ## References
 ### Chest X-Ray Data
