@@ -20,6 +20,29 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 
 
+class ClassificationDataset(Dataset):
+    def __init__(self, X, y, input_transform=None, target_transform=None):
+        self.X = X
+        self.y = y
+        self.input_transform = input_transform
+        self.target_transform = target_transform
+        self.seed = np.random.randint(2147483647)
+        
+    def __getitem__(self, key):
+        x, y = self.X[key], self.y[key]
+        if self.input_transform and self.target_transform:
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+        if self.input_transform:
+            x = self.input_transform(x)
+        if self.target_transform:
+            y = self.target_transform(y)
+        return x, y
+    
+    def __len__(self):
+        return len(self.X)
+
+
 class Chaos2DSegmentationDataset(Dataset):
     """
     PyTorch Dataset class for the CHAOS CT/MR dataset
@@ -69,7 +92,8 @@ class Chaos2DSegmentationDataset(Dataset):
 
     def _get_array(self, input_data):
         if type(input_data) == pydicom.dataset.FileDataset:
-            image_arr = input_data.pixel_array
+            image_arr = extract_array_as_HU(input_data)
+            image_arr = apply_ct_abdomen_filter(image_arr)
         elif type(input_data) == PIL.PngImagePlugin.PngImageFile:
             image_arr = np.array(input_data, dtype=np.uint8)
         else:
@@ -105,13 +129,58 @@ class Chaos2DSegmentationDataset(Dataset):
 
     def __len__(self):
         return len(self.image_pair_filepaths)
+    
+    
+def extract_array_as_HU(dicom_obj):
+    """Extract the pixel array and convert to Hounsfield Units"""
+    array = dicom_obj.pixel_array
+    array = array.astype(np.int16)
+    
+    array[array == -2000] = 0
+    
+    intercept = dicom_obj.RescaleIntercept
+    slope = dicom_obj.RescaleSlope
+    
+    if slope != 1:
+        array = slope * array.astype(np.float64)
+        array = array.astype(np.int16)
+        
+    array += np.int16(intercept)
+    return array
+
+
+def apply_ct_abdomen_filter(array):
+    """
+    Apply a threshold (window of 350 and level of 40) to achieve a CT abdomen
+    filtered array
+    """
+    L = 40
+    W = 350
+    array[array < (L-(W//2))] = L - (W//2)
+    array[array > (L+(W//2))] = L + (W//2)
+    return array
+
+
+def get_CHAOS_abdomen_segmentation_pairs(data_dir):
+    image_pair_filepaths = get_image_pair_filepaths(data_dir)
+    X, y = [], []
+    for dicom_fp, target_fp in image_pair_filepaths:
+        
+        dicom = pydicom.dcmread(dicom_fp)
+        abdomen_image = extract_array_as_HU(dicom)
+        abdomen_image = apply_ct_abdomen_filter(abdomen_image)
+        X.append(abdomen_image)
+        
+        target_image = Image.open(target_fp)
+        y.append(target_image)
+    return X, y
 
     
 class Hdf5SegmentationDataset(Dataset):
-    def __init__(self, hdf5_path, image_dset_name, target_dset_name, 
-                 input_transform=None, target_transform=None, 
-                 cache=False, cache_input_transform=None,
-                 cache_target_transform=None):
+    def __init__(self, hdf5_path, image_dset_name, target_dset_name,
+                 input_transform=None, target_transform=None, cache=False,
+                 cache_input_transform=None, cache_target_transform=None,
+                 distribution_name=None, target_count_name=None):
 
         self.hdf5_path = hdf5_path
         self.hdf5_file = h5py.File(hdf5_path, 'r')
@@ -123,6 +192,8 @@ class Hdf5SegmentationDataset(Dataset):
         self.cache_input_transform = cache_input_transform
         self.cache_target_transform = cache_target_transform
         self.cached_segmentation_pairs = []
+        self.target_distribution = self.hdf5_file[distribution_name][...] if distribution_name else None
+        self.target_count = self.hdf5_file[target_count_name][...] if target_count_name else None
         self.seed = np.random.randint(2147483647)
         
         if self.cache:
@@ -148,8 +219,8 @@ class Hdf5SegmentationDataset(Dataset):
             return len(self.hdf5_file[self.image_dset_name])
         
     def _cache_segmentation_pairs(self):
-        image_dset = self.hdf5_file[self.image_dset_name]
-        target_dset = self.hdf5_file[self.target_dset_name]
+        image_dset = self.hdf5_file[self.image_dset_name][:]
+        target_dset = self.hdf5_file[self.target_dset_name][:]
         for image, target in zip(image_dset, target_dset):
 
             image = self._transform(image, self.cache_input_transform)
@@ -163,7 +234,7 @@ class Hdf5SegmentationDataset(Dataset):
             torch.manual_seed(self.seed)
             return transform(x)
         else:
-            return x        
+            return x
         
 
 def get_image_pair_filepaths(root_chaos_directory, modality='CT', is_train=True):
