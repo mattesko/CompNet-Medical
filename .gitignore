@@ -5,3 +5,6 @@ __pycache__
 checkpoints
 backup
 **/*.pth
+data/*
+!data/download.py
+*.egg-info
