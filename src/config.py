@@ -2,11 +2,17 @@ from pathlib import Path
 import os
 import sys
 
+# Keep this config file under the `src` directory
+# Otherwise, you might not point to the project's root directory properly
 _config_file_path = Path(__file__).resolve()
 _project_dir = os.path.dirname(_config_file_path.parent)
 
+# Change the path where you store your data with respect to the project's root
+# directory here
 data_directory = os.path.join(_project_dir, 'data')
 
+# Change the directory path for your datasets, checkpoints, or 
+# CompositionalNets repository here
 directories = {
     'data': data_directory,
     'CompositionalNets': os.path.join(_project_dir, 'CompositionalNets'),
