@@ -1,13 +1,13 @@
 from comet_ml import Experiment
 import torch
 import torch.nn.functional as F
-# from sklearn.metrics import jaccard_score, f1_score
 import numpy as np
 import warnings
 import kornia.augmentation as K
 
-from metrics import dice_score, jaccard_score
-from utils import create_canvas
+from src.metrics import dice_score, jaccard_score
+from src.utils import create_canvas
+from src.config import directories
 
 
 def train_one_epoch(net, dataloader, optimizer, criterion, use_dice_loss=False,
@@ -129,21 +129,18 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
     from torchvision import transforms
 
-    from dataset import Chaos2DSegmentationDataset, NormalizeInstance, get_image_pair_filepaths, Resize, ClassificationDataset
-    from models import UNet
-    from metrics import dice_loss, dice_score
+    from src.dataset import Chaos2DSegmentationDataset, NormalizeInstance, get_image_pair_filepaths, Resize, ClassificationDataset
+    from src.models import UNet
+    from src.metrics import dice_loss, dice_score
     
     date_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    # Change the below directory depending on where the CHAOS dataset is stored
-    data_dir = os.path.join('CompositionalNets', 'data', 'chaos')
-
     experiment = Experiment(api_key="P5seMqEJjqZ8mDA7QYSuK3yUJ",
                             project_name="chaos-liver-segmentation",
                             workspace="matthew42", auto_metric_logging=False)
 
     params = {
         "lr": 0.0001,
-        "batch_size": 8,
+        "batch_size": 16,
         "split_train_val": 0.8,
         "epochs": 25,
         "use_dice_loss": False,
@@ -167,7 +164,7 @@ if __name__ == '__main__':
         transforms.ToPILImage(),
         transforms.Grayscale(3),
         transforms.Resize((256, 256)),
-#         transforms.CenterCrop((224, 224)),
+        transforms.CenterCrop((224, 224)),
         transforms.ToTensor(),
     ])
 
@@ -175,25 +172,27 @@ if __name__ == '__main__':
         transforms.Lambda(lambda x: x.astype(np.uint8)),
         transforms.ToPILImage(),
         transforms.Resize((256, 256)),
-#         transforms.CenterCrop((224, 224)),
+        transforms.CenterCrop((224, 224)),
         transforms.ToTensor(),
+#        transforms.Lambda(lambda x: x*255),
+#        transforms.Lambda(lambda x: x.long()),
+    ])
+
+    input_transform = transforms.Compose([
+        K.RandomAffine(0, shear=(-5, 5)),
+        K.RandomHorizontalFlip(),
+        transforms.Lambda(lambda x: x.squeeze()),
+    ])
+#    input_transform = None
+
+    target_transform = transforms.Compose([
+        K.RandomAffine(0, shear=(-5, 5)),
+        K.RandomHorizontalFlip(),
+        transforms.Lambda(lambda x: x.squeeze()),
         transforms.Lambda(lambda x: x*255),
         transforms.Lambda(lambda x: x.long()),
     ])
-
-#     input_transform = transforms.Compose([
-#         K.RandomAffine(0, shear=(-5, 5)),
-#         K.RandomHorizontalFlip(),
-#         transforms.Lambda(lambda x: x.squeeze()),
-#     ])
-    input_transform = None
-
-#     target_transform = transforms.Compose([
-#         K.RandomAffine(0, shear=(-5, 5)),
-#         K.RandomHorizontalFlip(),
-#         transforms.Lambda(lambda x: x.squeeze()),
-#     ])
-    target_transform = None
+#    target_transform = None
 
     # Load data for training and validation
 #     image_pair_filepaths = get_image_pair_filepaths(data_dir)[:]
@@ -212,7 +211,8 @@ if __name__ == '__main__':
 #                                              cache_input_transform=cache_input_transform,
 #                                              cache_gt_transform=cache_target_transform,
 #                                              device=device)
-    hdf5_path = os.path.join('CompositionalNets', 'data', 'chaos', 'train.hdf5')
+    data_dir = directories['chaos']
+    hdf5_path = os.path.join(data_dir, 'train.hdf5')
     hf = h5py.File(hdf5_path, 'r')
     images, targets = hf['images'], hf['masks']
     images = [cache_input_transform(im) for im in images]
@@ -223,7 +223,9 @@ if __name__ == '__main__':
                                                         shuffle=params["shuffle_data"])
     train_dataset = ClassificationDataset(X_train, y_train, input_transform,
                                          target_transform)
-    val_dataset = ClassificationDataset(X_test, y_test)
+    val_dataset = ClassificationDataset(X_test, y_test,
+            target_transform=transforms.Compose([transforms.Lambda(lambda x: x*255), transforms.Lambda(lambda x: x.long()),])
+            )
 
     num_train, num_val = len(train_dataset), len(val_dataset)
     params['num_samples'] = num_train + num_val
@@ -287,7 +289,7 @@ if __name__ == '__main__':
                                   epoch=epoch, include_context=False)
                 
             
-    filepath = f'checkpoints/unet_liver_{date_time}.pth'
+    filepath = os.path.join(directories['checkpoints'], f'unet_liver_{date_time}.pth')
 #     torch.save(unet.state_dict(), filename)
     torch.save({
 #         'epoch': epoch,
