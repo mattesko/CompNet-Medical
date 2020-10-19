@@ -1,11 +1,11 @@
 from pathlib import Path
 import os
-import sys
 
 # Keep this config file under the `src` directory
 # Otherwise, you might not point to the project's root directory properly
 _config_file_path = Path(__file__).resolve()
 _project_dir = os.path.dirname(_config_file_path.parent)
+_registrations_dir = os.path.dirname(_config_file_path.parent.parent)
 
 # Change the path where you store your data with respect to the project's root
 # directory here
@@ -23,6 +23,7 @@ directories = {
     'shenzhen': os.path.join(data_directory, 'shenzhen_cxr'),
     'pulmonary_cxr_abnormalities': os.path.join(data_directory, 'pulmonary_cxr_abnormalities'),
     'chestx-ray8': os.path.join(data_directory, 'chestx-ray8'),
+    'chaos_registrations': os.path.join(_registrations_dir, 'registrations')
 }
 
 # filepaths = {

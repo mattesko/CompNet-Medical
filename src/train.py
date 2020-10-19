@@ -8,6 +8,7 @@ import kornia.augmentation as K
 from src.metrics import dice_score, jaccard_score
 from src.utils import create_canvas
 from src.config import directories
+from src.dataset import Resize
 
 
 def train_one_epoch(net, dataloader, optimizer, criterion, use_dice_loss=False,
@@ -104,7 +105,7 @@ def validate(net, dataloader, epoch, device=None, input_dtype=torch.double,
 
         if experiment:
             if i % batch_freq == 0 and (epoch+1) % epoch_freq == 0:
-                outputs, targets = outputs.data.cpu().numpy(), targets.data.cpu().numpy()
+                outputs, targets = outputs.data.cpu().numpy()*255, targets.data.cpu().numpy()*255
                 for idx, (out, gt) in enumerate(zip(outputs, targets)):
                     with warnings.catch_warnings():
                         img = create_canvas(out, gt, show=False)
@@ -118,7 +119,6 @@ def validate(net, dataloader, epoch, device=None, input_dtype=torch.double,
 
 if __name__ == '__main__':
     import os
-    import pdb
     from datetime import datetime
 
     from sklearn.model_selection import train_test_split
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
     from torchvision import transforms
 
-    from src.dataset import Chaos2DSegmentationDataset, NormalizeInstance, get_image_pair_filepaths, Resize, ClassificationDataset
+    from src.dataset import Chaos2DSegmentationDataset, get_image_pair_filepaths, ClassificationDataset
     from src.models import UNet
     from src.metrics import dice_loss, dice_score
     
@@ -142,7 +142,7 @@ if __name__ == '__main__':
         "lr": 0.0001,
         "batch_size": 16,
         "split_train_val": 0.8,
-        "epochs": 25,
+        "epochs": 45,
         "use_dice_loss": False,
         "cache": True,
         "random_seed": 42,
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         "scheduler": "StepLR",
         "step_size": 15,
         "gamma": 0.75,
-        "threshold": 0.7,
+        "threshold": 0.9,
         "pretrained": True,
     }
 
@@ -159,40 +159,48 @@ if __name__ == '__main__':
     input_images_dtype = torch.double
     targets_dtype = torch.long
     if is_cuda_available: torch.cuda.empty_cache()
-
+        
+    
+    size = (256, 256)
+    crop = (224, 224)
     cache_input_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Grayscale(3),
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop((224, 224)),
+        transforms.Lambda(lambda x: np.stack((x, x, x), axis=2)),
+        transforms.Lambda(lambda x: (x - x.min()) / (x.max() - x.min())),
+        transforms.Lambda(lambda x: x.astype(np.float32)),
+#         transforms.ToPILImage(),
+#         transforms.Grayscale(3),
+#         transforms.Resize((128, 128)),
+#         transforms.CenterCrop((112, 112)),
         transforms.ToTensor(),
+        Resize(size),
+        K.CenterCrop(size=crop),
     ])
 
     cache_target_transform = transforms.Compose([
         transforms.Lambda(lambda x: x.astype(np.uint8)),
         transforms.ToPILImage(),
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop((224, 224)),
+        transforms.Resize(size),
+        transforms.CenterCrop(crop),
         transforms.ToTensor(),
-#        transforms.Lambda(lambda x: x*255),
-#        transforms.Lambda(lambda x: x.long()),
-    ])
-
-    input_transform = transforms.Compose([
-        K.RandomAffine(0, shear=(-5, 5)),
-        K.RandomHorizontalFlip(),
-        transforms.Lambda(lambda x: x.squeeze()),
-    ])
-#    input_transform = None
-
-    target_transform = transforms.Compose([
-        K.RandomAffine(0, shear=(-5, 5)),
-        K.RandomHorizontalFlip(),
-        transforms.Lambda(lambda x: x.squeeze()),
         transforms.Lambda(lambda x: x*255),
         transforms.Lambda(lambda x: x.long()),
     ])
-#    target_transform = None
+
+#    input_transform = transforms.Compose([
+#        K.RandomAffine(0, shear=(-5, 5)),
+#        K.RandomHorizontalFlip(),
+#        transforms.Lambda(lambda x: x.squeeze()),
+#    ])
+    input_transform = None
+
+#    target_transform = transforms.Compose([
+#        K.RandomAffine(0, shear=(-5, 5)),
+#        K.RandomHorizontalFlip(),
+#        transforms.Lambda(lambda x: x.squeeze()),
+#        transforms.Lambda(lambda x: x*255),
+#        transforms.Lambda(lambda x: x.long()),
+#    ])
+    target_transform = None
 
     # Load data for training and validation
 #     image_pair_filepaths = get_image_pair_filepaths(data_dir)[:]
@@ -213,10 +221,14 @@ if __name__ == '__main__':
 #                                              device=device)
     data_dir = directories['chaos']
     hdf5_path = os.path.join(data_dir, 'train.hdf5')
+#     hdf5_path = os.path.join(data_dir, 'train_augmented.hdf5')
     hf = h5py.File(hdf5_path, 'r')
+
     images, targets = hf['images'], hf['masks']
+
     images = [cache_input_transform(im) for im in images]
     targets = [cache_target_transform(t) for t in targets]
+
     X_train, X_test, y_train, y_test = train_test_split(images, targets, 
                                                         train_size=params['split_train_val'],
                                                         random_state=params['random_seed'],
@@ -252,6 +264,17 @@ if __name__ == '__main__':
     if is_cuda_available: loss_weight = loss_weight.to(device)
     criterion = dice_loss if params['use_dice_loss'] else CrossEntropyLoss(weight=loss_weight,
                                                                            reduction='mean')
+
+    image, target = train_dataset[0]
+    image = image.clone().permute(1, 2, 0).numpy()
+    target = target.clone().numpy()
+    img = create_canvas(image, target, show=False,
+                               title1='Example Input', title2='Example Target')
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore",category=DeprecationWarning)
+        experiment.log_image(img, name=f'example_input_target', overwrite=True,
+                    image_format="png", image_scale=1.0, image_shape=None, image_colormap="gray",
+                    copy_to_tmp=False)
     
     experiment.log_parameters(params)
     num_accumulated_steps = 128 // params['batch_size']

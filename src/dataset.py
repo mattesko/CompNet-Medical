@@ -21,12 +21,16 @@ from torchvision import transforms
 
 
 class ClassificationDataset(Dataset):
-    def __init__(self, X, y, input_transform=None, target_transform=None):
+    def __init__(self, X, y, input_transform=None, target_transform=None, 
+                 seed=np.random.randint(2147483647)):
         self.X = X
         self.y = y
         self.input_transform = input_transform
         self.target_transform = target_transform
-        self.seed = np.random.randint(2147483647)
+        self.seed = seed
+        
+    def set_seed(self, seed):
+        self.seed = seed
         
     def __getitem__(self, key):
         x, y = self.X[key], self.y[key]
@@ -279,6 +283,55 @@ def get_image_pair_filepaths(root_chaos_directory, modality='CT', is_train=True)
             image_pair_filepaths.extend([os.path.join(modality_path, patient, input_image_dir, name) for name in input_image_names])
             
     return image_pair_filepaths
+
+
+def get_chaos_volumes(root_chaos_directory, modality='CT', is_train=True):
+    """Returns a list of slices grouped by volume/patien
+    Args:
+        root_chaos_directory: The root directory for the CHAOS dataset
+            Expects the following file structure:
+            root_chaos_directory/modality/patient/
+                                         DICOM_anon/
+                                             image1.ext1
+                                             ...
+                                             imageN.ext1
+                                         Ground/
+                                             image1.ext2
+                                             ...
+                                             imageN.ext2
+    """
+    assert modality == 'CT' or modality == 'MR', f'Modality can either be CT or MR, and not {modality}'
+    if is_train:
+        modality_path = os.path.join(root_chaos_directory, 'Train_Sets', modality)
+    else:
+        modality_path = os.path.join(root_chaos_directory, 'Test_Sets', modality)
+    
+    input_image_dir = 'DICOM_anon'
+    gt_image_dir = 'Ground'
+    
+    volumes = []
+    for patient in sorted(os.listdir(modality_path)):
+        
+        input_image_names = sorted(os.listdir(os.path.join(modality_path, patient, input_image_dir)))
+        pairs = []
+
+        if is_train:
+            
+            gt_image_names = sorted(os.listdir(os.path.join(modality_path, patient, gt_image_dir)))
+            assert len(input_image_names) == len(gt_image_names), f"Number of input images and segmentation masks don't match for patient {patient}"
+            for input_name, gt_name in zip(input_image_names, gt_image_names):
+                
+                input_path = os.path.join(modality_path, patient, input_image_dir, input_name)
+                gt_path = os.path.join(modality_path, patient, gt_image_dir, gt_name)
+                pairs.append((input_path, gt_path))
+        else:
+            for name in input_image_names:
+                input_path = os.path.join(modality_path, patient, input_image_dir, name)
+                pairs.append((input_path, None))
+        
+        volumes.append(pairs)
+            
+    return volumes
 
 
 class NormalizeInstance(object):

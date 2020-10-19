@@ -10,11 +10,11 @@ def create_canvas(arr1, arr2, show=False, title1='Predicted Segmentation Map',
                  title2='Ground Truth Segmentation Map'):
     fig, (ax1, ax2) = plt.subplots(1, 2, tight_layout=True)
     ax1.set_title(title1)
-    ax1.imshow(np.squeeze(arr1 * 255), cmap="gray")
+    ax1.imshow(np.squeeze(arr1), cmap="gray")
     ax1.axis('off')
 
     ax2.set_title(title2)
-    ax2.imshow(np.squeeze(arr2 * 255), cmap="gray")
+    ax2.imshow(np.squeeze(arr2), cmap="gray")
     ax2.axis('off')
 
     buf = io.BytesIO()

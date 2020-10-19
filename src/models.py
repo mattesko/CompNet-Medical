@@ -112,3 +112,52 @@ class UNet(nn.Module):
         layer9 = self.conv9_output(layer9)
 
         return layer9
+    
+    def get_bottleneck_feature_map(self, x):
+        layer1 = F.relu(self.conv1_input(x))
+        layer1 = F.relu(self.conv1(layer1))
+
+        layer2 = F.max_pool2d(layer1, 2)
+        layer2 = F.relu(self.conv2_input(layer2))
+        layer2 = F.relu(self.conv2(layer2))
+
+        layer3 = F.max_pool2d(layer2, 2)
+        layer3 = F.relu(self.conv3_input(layer3))
+        layer3 = F.relu(self.conv3(layer3))
+
+        layer4 = F.max_pool2d(layer3, 2)
+        layer4 = F.relu(self.conv4_input(layer4))
+        layer4 = F.relu(self.conv4(layer4))
+
+        layer5 = F.max_pool2d(layer4, 2)
+        layer5 = F.relu(self.conv5_input(layer5))
+        layer5 = F.relu(self.conv5(layer5))
+        
+        return layer5
+    
+    def get_features(self):
+        return nn.Sequential(self.conv1_input,
+            self.conv1,
+            self.conv2_input,
+            self.conv2,
+            self.conv3_input,
+            self.conv3,
+            self.conv4_input,
+            self.conv4,
+            self.conv5_input,
+            self.conv5,
+            self.conv6_up,
+            self.conv6_input,
+            self.conv6,
+            self.conv7_up,
+            self.conv7_input,
+            self.conv7,
+            self.conv8_up,
+            self.conv8_input,
+            self.conv8,
+            self.conv9_up,
+            self.conv9_input,
+            self.conv9,
+            self.conv9_output,
+            self.final
+        )

@@ -5,5 +5,5 @@ module load scipy-stack
 
 source ${HOME}/.virtualenvs/CompNet/bin/activate
 cd ${HOME}/projects/def-petersv/mattlk/workplace/CompNet-Medical
-python src/train.py
+python notebooks/experiment_lits.py
 
