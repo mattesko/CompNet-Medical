@@ -24,6 +24,9 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+Manual installation of GDCM is required!
+~/Downloads/cmake-3.19.0-rc2-Linux-x86_64/bin/ccmake ../gdcm -DPYTHON_INCLUDE_DIR=$(python -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") -DPYTHON_LIBRARY=$(python -c "import distutils.sysconfig as sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+
 ## References
 * Wang, Xiaosong, et al. ChestX-Ray8: Hospital-Scale Chest X-Ray Database and Benchmarks on Weakly-Supervised Classification and Localization of Common Thorax Diseases. p. 10. \[[paper](https://openaccess.thecvf.com/content_cvpr_2017/papers/Wang_ChestX-ray8_Hospital-Scale_Chest_CVPR_2017_paper.pdf)\]
 * Jaeger, Stefan, et al. “Two Public Chest X-Ray Datasets for Computer-Aided Screening of Pulmonary Diseases.” Quantitative Imaging in Medicine and Surgery, vol. 4, no. 6, Dec. 2014, pp. 475–77. PubMed Central, doi:10.3978/j.issn.2223-4292.2014.11.20. \[[paper](https://doi.org/10.3978/j.issn.2223-4292.2014.11.20)\]
