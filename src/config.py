@@ -26,6 +26,25 @@ directories = {
     'chaos_registrations': os.path.join(_registrations_dir, 'registrations')
 }
 
+class Directories:
+    DATA = data_directory
+    
+    # CompositionalNets github repository directory
+    COMPOSITIONAL_NETS = os.path.join(_project_dir, 'CompositionalNets')
+    
+    # U-Net model checkpoint directory
+    CHECKPOINTS =  os.path.join(_project_dir, 'checkpoints')
+    
+    # Data directories
+    LITS =  os.path.join(data_directory, 'lits')
+    CHAOS = os.path.join(data_directory, 'chaos')
+    CHAOS_REGISTRATIONS = os.path.join(_registrations_dir, 'registrations')
+    RSNA = os.path.join(data_directory, 'rsna-pneumonia-detection-challenge')
+    SHENZHEN = os.path.join(data_directory, 'shenzhen_cxr')
+    PULMONARY_CXR_ABNORMALITIES = os.path.join(data_directory, 'pulmonary_cxr_abnormalities')
+    CHESTX_RAY8 = os.path.join(data_directory, 'chestx-ray8')
+    BASELINES = os.path.join(data_directory, 'baselines')
+
 # filepaths = {
     
 # }

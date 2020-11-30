@@ -7,7 +7,7 @@ import kornia.augmentation as K
 
 from src.metrics import dice_score, jaccard_score
 from src.utils import create_canvas
-from src.config import directories
+from src.config import Directories
 from src.dataset import Resize
 
 
@@ -103,18 +103,25 @@ def validate(net, dataloader, epoch, device=None, input_dtype=torch.double,
         score = jaccard_score(outputs, targets)
         jaccard_mean = jaccard_mean + (score - jaccard_mean) / (i + 1)
 
-        if experiment:
-            if i % batch_freq == 0 and (epoch+1) % epoch_freq == 0:
-                outputs, targets = outputs.data.cpu().numpy()*255, targets.data.cpu().numpy()*255
-                for idx, (out, gt) in enumerate(zip(outputs, targets)):
-                    with warnings.catch_warnings():
-                        img = create_canvas(out, gt, show=False)
-                        warnings.filterwarnings("ignore",category=DeprecationWarning)
-                        experiment.log_image(img, name=f'epoch_{epoch:03d}_batch_{i:03d}_idx_{idx}_segmap', overwrite=True, 
-                                             image_format="png", image_scale=1.0, image_shape=None, image_colormap="gray",
-                                             image_channels="first", copy_to_tmp=False, step=epoch)
+        #if experiment:
+        #    if i % batch_freq == 0 and (epoch+1) % epoch_freq == 0:
+        #        outputs, targets = outputs.data.cpu().numpy()*255, targets.data.cpu().numpy()*255
+        #        for idx, (out, gt) in enumerate(zip(outputs, targets)):
+        #            with warnings.catch_warnings():
+        #                img = create_canvas(out, gt, show=False)
+        #                warnings.filterwarnings("ignore",category=DeprecationWarning)
+        #                experiment.log_image(img, name=f'epoch_{epoch:03d}_batch_{i:03d}_idx_{idx}_segmap', overwrite=True, 
+        #                                     image_format="png", image_scale=1.0, image_shape=None, image_colormap="gray",
+        #                                     image_channels="first", copy_to_tmp=False, step=epoch)
 
     return dice_mean.item(), jaccard_mean.item()
+
+    
+def stack_normalize(x):
+    x = np.stack((x, x, x), axis=2)
+    x = (x - x.min()) / (x.max() - x.min() + 1e-12)
+    x = x.astype(np.float32)
+    return x
 
 
 if __name__ == '__main__':
@@ -160,23 +167,37 @@ if __name__ == '__main__':
     targets_dtype = torch.long
     if is_cuda_available: torch.cuda.empty_cache()
         
-    
     size = (256, 256)
     crop = (224, 224)
-    cache_input_transform = transforms.Compose([
-        transforms.Lambda(lambda x: np.stack((x, x, x), axis=2)),
-        transforms.Lambda(lambda x: (x - x.min()) / (x.max() - x.min())),
-        transforms.Lambda(lambda x: x.astype(np.float32)),
-#         transforms.ToPILImage(),
-#         transforms.Grayscale(3),
-#         transforms.Resize((128, 128)),
-#         transforms.CenterCrop((112, 112)),
+    train_input_transform = transforms.Compose([
+        stack_normalize,
         transforms.ToTensor(),
         Resize(size),
-        K.CenterCrop(size=crop),
+        K.CenterCrop(crop),
+    #     K.RandomAffine(degrees=(-5, 5), translate=(0.05, 0.05), scale=(0.75, 1.25)),
+        transforms.Lambda(lambda x: x.squeeze()),
     ])
 
-    cache_target_transform = transforms.Compose([
+    train_target_transform = transforms.Compose([
+        transforms.Lambda(lambda x: x.astype(np.uint8)),
+        transforms.ToPILImage(),
+        transforms.Resize(size),
+        transforms.CenterCrop(crop),
+        transforms.ToTensor(),
+    #     K.RandomAffine(degrees=(-5, 5), translate=(0.05, 0.05), scale=(0.75, 1.25)),
+        transforms.Lambda(lambda x: x.squeeze()),
+        transforms.Lambda(lambda x: x*255),
+        transforms.Lambda(lambda x: x.long()),
+    ])
+
+    val_input_transform = transforms.Compose([
+        stack_normalize,
+        transforms.ToTensor(),
+        Resize(size),
+        K.CenterCrop(crop),
+        transforms.Lambda(lambda x: x.squeeze()),
+    ])
+    val_target_transform = transforms.Compose([
         transforms.Lambda(lambda x: x.astype(np.uint8)),
         transforms.ToPILImage(),
         transforms.Resize(size),
@@ -185,67 +206,49 @@ if __name__ == '__main__':
         transforms.Lambda(lambda x: x*255),
         transforms.Lambda(lambda x: x.long()),
     ])
+    
+    data_dir = Directories.CHAOS
+    
+    image_pair_filepaths = get_image_pair_filepaths(data_dir)[:]
+    train_filepaths, val_filepaths = train_test_split(image_pair_filepaths,
+                                                      train_size=params['split_train_val'],
+                                                      random_state=params['random_seed'],
+                                                      shuffle=params["shuffle_data"])
 
-#    input_transform = transforms.Compose([
-#        K.RandomAffine(0, shear=(-5, 5)),
-#        K.RandomHorizontalFlip(),
-#        transforms.Lambda(lambda x: x.squeeze()),
-#    ])
-    input_transform = None
+    train_dataset = Chaos2DSegmentationDataset(train_filepaths, 
+                                               input_transform=train_input_transform,
+                                               target_transform=train_target_transform,
+                                               cache=params['cache'])
 
-#    target_transform = transforms.Compose([
-#        K.RandomAffine(0, shear=(-5, 5)),
-#        K.RandomHorizontalFlip(),
-#        transforms.Lambda(lambda x: x.squeeze()),
-#        transforms.Lambda(lambda x: x*255),
-#        transforms.Lambda(lambda x: x.long()),
-#    ])
-    target_transform = None
+    val_dataset = Chaos2DSegmentationDataset(val_filepaths,
+                                             input_transform=val_input_transform,
+                                             target_transform=val_target_transform,
+                                             cache=params['cache'])
+    
+#     hdf5_path = os.path.join(data_dir, 'train.hdf5')
+#     hf = h5py.File(hdf5_path, 'r')
 
-    # Load data for training and validation
-#     image_pair_filepaths = get_image_pair_filepaths(data_dir)[:]
-#     train_filepaths, val_filepaths = train_test_split(image_pair_filepaths,
-#                                                       train_size=params['split_train_val'],
-#                                                       random_state=params['random_seed'],
-#                                                       shuffle=params["shuffle_data"])
+#     images, targets = hf['images'][:], hf['masks'][:]
 
-#     train_dataset = Chaos2DSegmentationDataset(train_filepaths, input_transform=input_transform,
-#                                                gt_transform=target_transform, cache=params['cache'],
-#                                                cache_input_transform=cache_input_transform,
-#                                                cache_gt_transform=cache_target_transform,
-#                                                device=device)
+#     images = [cache_input_transform(im) for im in images]
+#     targets = [cache_target_transform(t) for t in targets]
 
-#     val_dataset = Chaos2DSegmentationDataset(val_filepaths, cache=params['cache'],
-#                                              cache_input_transform=cache_input_transform,
-#                                              cache_gt_transform=cache_target_transform,
-#                                              device=device)
-    data_dir = directories['chaos']
-    hdf5_path = os.path.join(data_dir, 'train.hdf5')
-#     hdf5_path = os.path.join(data_dir, 'train_augmented.hdf5')
-    hf = h5py.File(hdf5_path, 'r')
-
-    images, targets = hf['images'], hf['masks']
-
-    images = [cache_input_transform(im) for im in images]
-    targets = [cache_target_transform(t) for t in targets]
-
-    X_train, X_test, y_train, y_test = train_test_split(images, targets, 
-                                                        train_size=params['split_train_val'],
-                                                        random_state=params['random_seed'],
-                                                        shuffle=params["shuffle_data"])
-    train_dataset = ClassificationDataset(X_train, y_train, input_transform,
-                                         target_transform)
-    val_dataset = ClassificationDataset(X_test, y_test,
-            target_transform=transforms.Compose([transforms.Lambda(lambda x: x*255), transforms.Lambda(lambda x: x.long()),])
-            )
+#     X_train, X_test, y_train, y_test = train_test_split(images, targets, 
+#                                                         train_size=params['split_train_val'],
+#                                                         random_state=params['random_seed'],
+#                                                         shuffle=params["shuffle_data"])
+#     train_dataset = ClassificationDataset(X_train, y_train, input_transform,
+#                                          target_transform)
+#     val_dataset = ClassificationDataset(X_test, y_test, input_transform,
+#                                         target_transform)
 
     num_train, num_val = len(train_dataset), len(val_dataset)
     params['num_samples'] = num_train + num_val
-    params['target_transform'] = target_transform.__str__()
-    params['input_transform'] = input_transform.__str__()
+    params['input_transform'] = train_input_transform.__str__()
+    params['target_transform'] = train_target_transform.__str__()
 
-    train_dataloader = DataLoader(train_dataset, batch_size=params['batch_size'])
-    val_dataloader = DataLoader(val_dataset, batch_size=params['batch_size'])
+    train_dataloader = DataLoader(train_dataset, batch_size=params['batch_size'], shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=params['batch_size'], shuffle=True)
 
     # Instantiate model, optimizer, and criterion
 
@@ -268,55 +271,59 @@ if __name__ == '__main__':
     image, target = train_dataset[0]
     image = image.clone().permute(1, 2, 0).numpy()
     target = target.clone().numpy()
-    img = create_canvas(image, target, show=False,
-                               title1='Example Input', title2='Example Target')
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore",category=DeprecationWarning)
-        experiment.log_image(img, name=f'example_input_target', overwrite=True,
-                    image_format="png", image_scale=1.0, image_shape=None, image_colormap="gray",
-                    copy_to_tmp=False)
+    #img = create_canvas(image, target, show=False,
+    #                           title1='Example Input', title2='Example Target')
+    #with warnings.catch_warnings():
+    #    warnings.filterwarnings("ignore",category=DeprecationWarning)
+    #    experiment.log_image(img, name=f'example_input_target', overwrite=True,
+    #                image_format="png", image_scale=1.0, image_shape=None, image_colormap="gray",
+    #                copy_to_tmp=False)
     
     experiment.log_parameters(params)
     num_accumulated_steps = 128 // params['batch_size']
 
     with experiment.train():
-
         print(f'Number of training images:\t{num_train}\nNumber of validation images:\t{num_val}')
+        
+        best_score = 0.0
+        best_model_state_dict = unet.state_dict()
+        
         for epoch in range(params['epochs']):
 
             unet, running_loss = train_one_epoch(unet, train_dataloader, optimizer,
                                                  criterion, 
                                                  num_accumulated_steps=num_accumulated_steps,
                                                  device=device, **params)
-
-            if params['use_dice_loss']:
-                print(f'[Epoch {epoch+1:03d} Training]\tDice Loss:\t\t{running_loss:.4f}')
-            else:
-                print(f'[Epoch {epoch+1:03d} Training]\tCross-Entropy Loss:\t{running_loss:.4f}')
-            experiment.log_metric("Running Loss", running_loss, epoch=epoch, step=epoch, include_context=False)
-
+            train_dataloader.dataset.seed = epoch
             f1_mean, jaccard_mean = validate(unet, val_dataloader, epoch,
                                              device=device,
                                              batch_freq=25, epoch_freq=5,
                                              experiment=experiment, **params)
-
-            if params['scheduler'] == 'ReduceLROnPlateau':
-                scheduler.step(f1_mean)
+                
+            if params['use_dice_loss']:
+                print(f'[Epoch {epoch+1:03d} Training]\tDice Loss:\t\t{running_loss:.4f}')
             else:
-                scheduler.step()
+                print(f'[Epoch {epoch+1:03d} Training]\tCross-Entropy Loss:\t{running_loss:.4f}')            
             print(f'[Epoch {epoch+1:03d} Validation]\tAverage F1 Score:\t{f1_mean:.4f}\tAverage Jaccard/IoU:\t{jaccard_mean:.4f}\n')
-
+            
+            experiment.log_metric("Running Loss", running_loss, epoch=epoch, step=epoch, include_context=False)
             experiment.log_metric('Validation Average F1 Score', f1_mean,
                                   epoch=epoch, include_context=False)
             experiment.log_metric('Validation Average Jaccard/IoU', jaccard_mean,
                                   epoch=epoch, include_context=False)
-                
             
-    filepath = os.path.join(directories['checkpoints'], f'unet_liver_{date_time}.pth')
-#     torch.save(unet.state_dict(), filename)
+            if params['scheduler'] == 'ReduceLROnPlateau':
+                scheduler.step(f1_mean)
+            else:
+                scheduler.step()
+            
+            if f1_mean > best_score:
+                best_model_state_dict = unet.state_dict()
+            
+    filepath = os.path.join(Directories.CHECKPOINTS, f'unet_liver_{date_time}.pth')
     torch.save({
 #         'epoch': epoch,
-        'model_state_dict': unet.state_dict(),
+        'model_state_dict': best_model_state_dict,
 #         'optimizer_state_dict': optimizer.state_dict(),
 #         'scheduler_state_dict': scheduler.state_dict(),
         }, filepath)

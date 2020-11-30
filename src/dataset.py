@@ -54,22 +54,16 @@ class Chaos2DSegmentationDataset(Dataset):
     """
 
     def __init__(self, image_pair_filepaths, input_image_handler=pydicom.dcmread,
-                 gt_image_handler=Image.open, input_transform=None,
-                 gt_transform=None, cache=False, cache_input_transform=None,
-                 cache_gt_transform=None, device=None, input_dtype=torch.double,
-                 target_dtype=torch.long):
+                 target_image_handler=Image.open, input_transform=None,
+                 target_transform=None, cache=False):
 
         self.image_pair_filepaths = image_pair_filepaths
         self.input_image_handler = input_image_handler
-        self.gt_image_handler = gt_image_handler
+        self.target_image_handler = target_image_handler
         self.input_transform = input_transform
-        self.gt_transform = gt_transform
+        self.target_transform = target_transform
+        self.reset_seed = input_transform != None and target_transform != None
         self.cache = cache
-        self.cache_input_transform = cache_input_transform
-        self.cache_gt_transform = cache_gt_transform
-        self.device = device
-        self.input_dtype = input_dtype
-        self.target_dtype = target_dtype
         self.cached_segmentation_pairs = []
         self.seed = np.random.randint(2147483647)
 
@@ -78,21 +72,17 @@ class Chaos2DSegmentationDataset(Dataset):
 
     def _cache_segmentation_pairs(self):
         """Load all input image and ground truth images to the device memory"""
-        self.cached_segmentation_pairs = []
-        for input_image_fp, gt_image_fp in self.image_pair_filepaths:
+        for input_image_fp, target_image_fp in self.image_pair_filepaths:
 
-            input_image, gt_image = self._load_image_pair(input_image_fp, gt_image_fp)
-            input_image = self._transform(input_image, self.cache_input_transform)
-            gt_image = self._transform(gt_image, self.cache_gt_transform)
+            input_image, target_image = self._load_image_pair(input_image_fp, target_image_fp)
+            self.cached_segmentation_pairs.append((input_image, target_image))
 
-            self.cached_segmentation_pairs.append((input_image, gt_image))
-
-    def _load_image_pair(self, input_image_fp, gt_image_fp):
+    def _load_image_pair(self, input_image_fp, target_image_fp):
         """Load the input image and ground truth images"""
         input_image = self._get_array(self.input_image_handler(input_image_fp))
-        gt_image = self._get_array(self.gt_image_handler(gt_image_fp))
+        target_image = self._get_array(self.target_image_handler(target_image_fp))
 
-        return input_image, gt_image
+        return input_image, target_image
 
     def _get_array(self, input_data):
         if type(input_data) == pydicom.dataset.FileDataset:
@@ -105,31 +95,31 @@ class Chaos2DSegmentationDataset(Dataset):
 
         return image_arr
 
-    def _transform(self, image, transform):
-        if transform:
-            # Need to use the same seed for the random package, so that any
-            # random properties for both input and target transforms are the same
-            random.seed(self.seed)
-            torch.manual_seed(self.seed)
-            image = transform(image)
-        return image
-
     def __getitem__(self, key):
         if self.cache:
-            input_image, gt_image = self.cached_segmentation_pairs[key]
+            input_image, target_image = self.cached_segmentation_pairs[key]
         else:
-            input_image_fp, gt_image_fp = self.image_pair_filepaths[key]
-            input_image, gt_image = self._load_image_pair(input_image_fp,
-                                                          gt_image_fp)
+            input_image_fp, target_image_fp = self.image_pair_filepaths[key]
+            input_image, target_image = self._load_image_pair(input_image_fp,
+                                                          target_image_fp)
         
-        input_image = self._transform(input_image, self.input_transform)
-        gt_image = self._transform(gt_image, self.gt_transform)
+        # Need to use the same seed for the random package, so that any
+        # random properties for both input and target transforms are the same
+        if self.reset_seed:
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            
+        if self.input_transform:
+            input_image = self.input_transform(input_image)
+            
+        if self.reset_seed:
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            
+        if self.target_transform:
+            target_image = self.target_transform(target_image)
 
-        if self.device:
-            input_image = input_image.to(self.device, self.input_dtype)
-            gt_image = gt_image.to(self.device, self.target_dtype)
-
-        return input_image, gt_image
+        return input_image, target_image
 
     def __len__(self):
         return len(self.image_pair_filepaths)
