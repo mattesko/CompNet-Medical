@@ -47,6 +47,37 @@ class ClassificationDataset(Dataset):
         return len(self.X)
 
 
+class TripleDataset(Dataset):
+    def __init__(self, X, y, z, X_transform=None, y_transform=None, 
+                 z_transform=None, seed=np.random.randint(2147483647)):
+        self.X = X
+        self.y = y
+        self.z = z
+        self.X_transform = X_transform
+        self.y_transform = y_transform
+        self.z_transform = z_transform
+        self.seed = seed
+        
+    def set_seed(self, seed):
+        self.seed = seed
+        
+    def __getitem__(self, key):
+        x, y, z = self.X[key], self.y[key], self.z[key]
+        if self.X_transform and self.y_transform:
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+        if self.X_transform:
+            x = self.X_transform(x)
+        if self.y_transform:
+            y = self.y_transform(y)
+        if self.z_transform:
+            z = self.z_transform(z)
+        return x, y, z
+    
+    def __len__(self):
+        return len(self.X)
+
+
 class Chaos2DSegmentationDataset(Dataset):
     """
     PyTorch Dataset class for the CHAOS CT/MR dataset

@@ -1,0 +1,18 @@
+/var/spool/slurmd/job57229601/slurm_script: line 7: cd: /home/mattlk/projects/def-petersv/mattlk/workplace/CompNet: No such file or directory
+Sampling DNN features from dataset: 0it [00:00, ?it/s]Sampling DNN features from dataset: 1it [00:00,  9.82it/s]                                                          max_images 5000
+Traceback (most recent call last):
+  File "notebooks/VMFMM_learning.py", line 100, in <module>
+    p_out_name=f'chaos_pool5_{vc_num}_p_test_{experiment}.pickle')
+  File "/project/6052161/mattlk/workplace/CompNet-Medical/CompositionalNets/Initialization_Code/vMF_clustering.py", line 42, in learn_vmf_clusters
+    feature_map = extractor(images)[0].detach().cpu().numpy()
+  File "/home/mattlk/.virtualenvs/CompNet/lib/python3.6/site-packages/torch/nn/modules/module.py", line 550, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/home/mattlk/.virtualenvs/CompNet/lib/python3.6/site-packages/torch/nn/modules/container.py", line 100, in forward
+    input = module(input)
+  File "/home/mattlk/.virtualenvs/CompNet/lib/python3.6/site-packages/torch/nn/modules/module.py", line 550, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/home/mattlk/.virtualenvs/CompNet/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 349, in forward
+    return self._conv_forward(input, self.weight)
+  File "/home/mattlk/.virtualenvs/CompNet/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 346, in _conv_forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: Calculated padded input size per channel: (2 x 2). Kernel size: (3 x 3). Kernel size can't be greater than actual input size
