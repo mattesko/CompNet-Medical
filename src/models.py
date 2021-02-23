@@ -176,3 +176,9 @@ class UNet(nn.Module):
                              self.conv9_output,
                              self.final
         )
+    
+def set_weights_to_ones(model):
+    for i, layer in enumerate(model):
+        if type(layer) == nn.Conv2d:
+            model[i].weight = nn.Parameter(torch.ones(layer.weight.shape))
+    return model
